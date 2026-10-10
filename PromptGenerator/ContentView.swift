@@ -153,16 +153,28 @@ struct ContentView: View {
                     }
 
                     cardSection(title: "👗 DESCRIPTION DE LA TENUE") {
-                        TextEditor(text: $tenue)
-                            .font(.system(size: 14, design: .rounded))
-                            .frame(height: 80)
-                            .scrollContentBackground(.hidden)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
+                        ZStack(alignment: .topLeading) {
+                            if tenue.isEmpty {
+                                Text("Colle ta description de tenue...")
+                                    .font(.system(size: 14, design: .rounded))
+                                    .foregroundColor(.gray.opacity(0.5))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 10)
+                            }
+                            TextEditor(text: $tenue)
+                                .font(.system(size: 14, design: .rounded))
+                                .foregroundColor(.white)
+                                .frame(height: 80)
+                                .background(Color.clear)
+                                .opacity(tenue.isEmpty ? 0.7 : 1)
+                        }
+                        .padding(6)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
                     }
 
                     cardSection(title: "🧍 POSTURES") {
