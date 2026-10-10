@@ -87,7 +87,7 @@ let DECORS: [(String, String)] = [
 ]
 
 // ============================================================
-// CONSIGNES FIXES (ULTRA-RENFORCÉES)
+// CONSIGNES FIXES — PROMPT UNIVERSEL
 // ============================================================
 
 let IDENTITY_LOCK = """
@@ -95,7 +95,7 @@ MANDATORY IDENTITY PRESERVATION — HIGHEST PRIORITY:
 
 The woman in the generated image MUST be the EXACT SAME PERSON as the reference image uploaded by the user. This is a hard requirement, not a suggestion.
 
-Copy her face PIXEL BY PIXEL from the reference:
+Copy EVERYTHING from the reference image EXACTLY:
 - Same exact face shape and bone structure
 - Same exact eye shape, eye color, iris pattern, and eyelid shape
 - Same exact eyebrow shape, thickness, and color
@@ -105,20 +105,28 @@ Copy her face PIXEL BY PIXEL from the reference:
 - Same exact freckle pattern, placement, and density on the cheeks and nose
 - Same exact skin tone and undertone
 - Same exact hair color, hair texture, and hairline
+- Same exact makeup state (if she wears makeup, keep it IDENTICAL. If she has no makeup, keep her bare face.)
+- Same exact expression style and facial features
+- Same exact lip color and finish
 
 DO NOT invent a new face. DO NOT beautify. DO NOT enhance. DO NOT symmetrize. DO NOT change the age. DO NOT change the ethnicity. DO NOT change any feature even slightly.
 
 If you cannot preserve her exact identity, do not generate the image.
 """
 
+let MAKEUP_RULE = """
+MAKEUP RULE — COPY EXACTLY WHAT YOU SEE:
+
+Look at the reference image carefully:
+- If she wears makeup (eyeliner, mascara, lipstick, foundation, blush), reproduce it EXACTLY as it is: same eyeliner wing shape, same lipstick color and finish (matte or glossy), same mascara length, same foundation coverage, same blush placement.
+- If she has NO makeup, keep her completely bare face with zero makeup: no eyeliner, no mascara, no lipstick, no foundation, no powder, no drawn eyebrows, no blush.
+
+DO NOT add makeup if there is none. DO NOT remove makeup if there is some. Copy the reference EXACTLY as it is.
+"""
+
 let COMPOSITION_RULE = """
 CRITICAL COMPOSITION RULE:
 Leave a large empty space above the subject's head. The top of the hair must be positioned at approximately 60-70% from the bottom of the frame, leaving 30-40% of empty space above. This empty space is intentional and must NOT be filled with anything. The subject's head must never touch the top edge of the frame.
-"""
-
-let MAKEUP_RULE = """
-ABSOLUTELY NO MAKEUP:
-Completely bare face with zero makeup. No eyeliner, no mascara, no fake eyelashes, no lipstick, no lip gloss, no foundation, no powder, no drawn eyebrows, no blush. Her lips must be natural matte pink, not red, not glossy. Her eyes must have natural short lashes. Her eyebrows must be natural and unfilled. Her skin must show visible pores, natural freckles, and slight natural redness on the cheeks.
 """
 
 let PHOTO_STYLE = """
@@ -137,6 +145,7 @@ struct ContentView: View {
     @State private var prompts: [String] = []
     @State private var showCopiedAlert = false
     @State private var copiedIndex = 0
+    @FocusState private var isTenueFocused: Bool
 
     let formats = ["9:16", "3:4", "1:1", "4:5", "16:9", "2:3"]
     let cadragesUI = ["Miroir", "CamAvant", "Distance", "BrasTendu", "Aléatoire"]
@@ -206,6 +215,7 @@ struct ContentView: View {
                                 .frame(height: 80)
                                 .background(Color.clear)
                                 .opacity(tenue.isEmpty ? 0.7 : 1)
+                                .focused($isTenueFocused)
                         }
                         .padding(6)
                         .background(Color.white.opacity(0.05))
@@ -300,6 +310,19 @@ struct ContentView: View {
                 }
             }
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Terminé") {
+                    isTenueFocused = false
+                }
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.purple)
+            }
+        }
+        .onTapGesture {
+            isTenueFocused = false
+        }
         .alert(isPresented: $showCopiedAlert) {
             Alert(
                 title: Text("Copié ! 📋"),
@@ -355,6 +378,7 @@ struct ContentView: View {
     }
 
     func generer() {
+        isTenueFocused = false
         let lettres = lettreCadrage(cadrage)
         var resultats: [String] = []
 
@@ -362,7 +386,6 @@ struct ContentView: View {
             ? "a simple casual outfit"
             : tenue
 
-        // Filtrer les postures par lettre de cadrage
         var poolPosturesParLettre: [String: [String]] = [:]
         for cat in posturesActives {
             if let arr = POSTURES[cat] {
