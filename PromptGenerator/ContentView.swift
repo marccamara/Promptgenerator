@@ -51,14 +51,14 @@ let POSTURES: [String: [(String, String)]] = [
 ]
 
 let EXPRESSIONS: [(String, String)] = [
-    ("looking directly at the lens with a calm and collected demeanor", "ALL"),
-    ("looking sideways with a subtle moody aesthetic", "ALL"),
-    ("gazing softly into the distance with a dreamy expression", "ALL"),
-    ("looking at the camera with a natural slight smile", "C,S"),
-    ("looking at the mirror reflection with a playful expression", "M"),
-    ("caught in a candid moment, looking away from the camera", "D"),
-    ("expressing quiet confidence with a relaxed gaze", "ALL"),
-    ("giving a soft half-smile with a hint of shyness", "M,C,S"),
+    ("with a calm and collected demeanor, looking directly at the lens", "ALL"),
+    ("with a subtle moody aesthetic, looking sideways", "ALL"),
+    ("with a dreamy expression, gazing softly into the distance", "ALL"),
+    ("with a natural slight smile, looking at the camera", "C,S"),
+    ("with a playful expression, looking at the mirror reflection", "M"),
+    ("in a candid moment, looking away from the camera", "D"),
+    ("with quiet confidence, gaze relaxed", "ALL"),
+    ("with a soft half-smile and a hint of shyness", "M,C,S"),
     ("with a neutral calm expression, lips slightly parted", "ALL"),
     ("with a warm friendly expression, eyes slightly narrowed", "M,C,S")
 ]
@@ -85,6 +85,45 @@ let DECORS: [(String, String)] = [
     ("a park bench surrounded by trees, golden hour lighting", "D"),
     ("a bathroom with a large mirror, warm light, plants on shelves", "M")
 ]
+
+// ============================================================
+// CONSIGNES FIXES (ULTRA-RENFORCÉES)
+// ============================================================
+
+let IDENTITY_LOCK = """
+MANDATORY IDENTITY PRESERVATION — HIGHEST PRIORITY:
+
+The woman in the generated image MUST be the EXACT SAME PERSON as the reference image uploaded by the user. This is a hard requirement, not a suggestion.
+
+Copy her face PIXEL BY PIXEL from the reference:
+- Same exact face shape and bone structure
+- Same exact eye shape, eye color, iris pattern, and eyelid shape
+- Same exact eyebrow shape, thickness, and color
+- Same exact nose shape, nostril shape, and nose tip
+- Same exact lip shape, lip thickness, and mouth width
+- Same exact chin shape and jawline
+- Same exact freckle pattern, placement, and density on the cheeks and nose
+- Same exact skin tone and undertone
+- Same exact hair color, hair texture, and hairline
+
+DO NOT invent a new face. DO NOT beautify. DO NOT enhance. DO NOT symmetrize. DO NOT change the age. DO NOT change the ethnicity. DO NOT change any feature even slightly.
+
+If you cannot preserve her exact identity, do not generate the image.
+"""
+
+let COMPOSITION_RULE = """
+CRITICAL COMPOSITION RULE:
+Leave a large empty space above the subject's head. The top of the hair must be positioned at approximately 60-70% from the bottom of the frame, leaving 30-40% of empty space above. This empty space is intentional and must NOT be filled with anything. The subject's head must never touch the top edge of the frame.
+"""
+
+let MAKEUP_RULE = """
+ABSOLUTELY NO MAKEUP:
+Completely bare face with zero makeup. No eyeliner, no mascara, no fake eyelashes, no lipstick, no lip gloss, no foundation, no powder, no drawn eyebrows, no blush. Her lips must be natural matte pink, not red, not glossy. Her eyes must have natural short lashes. Her eyebrows must be natural and unfilled. Her skin must show visible pores, natural freckles, and slight natural redness on the cheeks.
+"""
+
+let PHOTO_STYLE = """
+The photo must look like a real unedited photo taken with an iPhone and pulled directly from a phone's camera roll. Slight ISO noise in shadow areas, subtle JPEG compression artifacts, natural indoor white balance. No beauty filter, no skin smoothing, no professional photography look, no studio lighting, no ring light.
+"""
 
 // ============================================================
 // INTERFACE
@@ -323,13 +362,19 @@ struct ContentView: View {
             ? "a simple casual outfit"
             : tenue
 
-        var poolPostures: [String] = []
+        // Filtrer les postures par lettre de cadrage
+        var poolPosturesParLettre: [String: [String]] = [:]
         for cat in posturesActives {
             if let arr = POSTURES[cat] {
-                poolPostures.append(contentsOf: arr.map { $0.0 })
+                for (posture, balise) in arr {
+                    for lettre in ["C", "M", "D", "S"] {
+                        if balise.contains(lettre) {
+                            poolPosturesParLettre[lettre, default: []].append(posture)
+                        }
+                    }
+                }
             }
         }
-        if poolPostures.isEmpty { poolPostures = ["standing naturally"] }
 
         for i in 0..<4 {
             let lettre = lettres[i % lettres.count]
@@ -337,30 +382,32 @@ struct ContentView: View {
             let poolCadrages = filtrerParBalise(CADRAGES, lettre: lettre)
             let poolExpressions = filtrerParBalise(EXPRESSIONS, lettre: lettre)
             let poolDecors = filtrerParBalise(DECORS, lettre: lettre)
+            let poolPostures = poolPosturesParLettre[lettre] ?? ["standing naturally"]
 
             let posture = poolPostures.randomElement() ?? "standing naturally"
             let cadr = poolCadrages.randomElement() ?? ""
-            let expr = poolExpressions.randomElement() ?? "looking at the camera"
+            let expr = poolExpressions.randomElement() ?? "with a calm expression, looking at the camera"
             let dec = poolDecors.randomElement() ?? "a cozy bedroom"
 
             let prompt = """
+            \(IDENTITY_LOCK)
+
+            PHOTO SPECIFICATIONS:
             A highly detailed, high-resolution photo taken on an iPhone. Format: \(formatTexte(formatSortie)). Single image only.
 
-            CRITICAL COMPOSITION RULE: Leave a large empty space above the subject's head. The top of the hair must be positioned at approximately 60-70% from the bottom of the frame, leaving 30-40% of empty space above. This empty space is intentional and must NOT be filled with anything. The subject's head must never touch the top edge of the frame.
+            \(COMPOSITION_RULE)
 
-            CRITICAL: The woman in the generated image must be IDENTICAL to the reference image. Copy her exact face shape, exact eye shape and color, exact nose shape, exact lip shape, exact eyebrow shape, exact freckle pattern on cheeks and nose. Do NOT beautify, do NOT enhance, do NOT change any feature.
+            \(MAKEUP_RULE)
 
-            Completely bare face with absolutely zero makeup. No eyeliner, no mascara, no fake eyelashes, no lipstick, no lip gloss, no foundation, no powder, no drawn eyebrows, no blush. Her lips must be natural matte pink, not red, not glossy. Her eyes must have natural short lashes. Her eyebrows must be natural and unfilled. Her skin must show visible pores, natural freckles, and slight natural redness on the cheeks.
-
+            SCENE:
             \(cadr),
-
-            featuring her with \(expr), showing her \(posture),
-
+            featuring her \(expr), showing her \(posture),
             wearing \(tenueFinale),
-
             in \(dec).
 
-            The photo must look like a real unedited photo taken with an iPhone and pulled directly from a phone's camera roll. Slight ISO noise in shadow areas, subtle JPEG compression artifacts, natural indoor white balance. No beauty filter, no skin smoothing, no professional photography look, no studio lighting, no ring light.
+            \(PHOTO_STYLE)
+
+            FINAL REMINDER: The face must be an EXACT COPY of the reference image. Do not change any feature. Do not beautify. Do not invent a new face. If you cannot preserve her exact identity, do not generate the image.
             """
 
             resultats.append(prompt)
