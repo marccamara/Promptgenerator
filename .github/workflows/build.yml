@@ -1,0 +1,43 @@
+name: Build IPA for TrollStore
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Configuration de Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Compilation de l'application
+        run: |
+          xcodebuild build \
+            -project PromptGenerator.xcodeproj \
+            -scheme PromptGenerator \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Création du package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/PromptGenerator.app Payload/
+          zip -r PromptGenerator.ipa Payload
+
+      - name: Publication de l'IPA en Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PromptGenerator-IPA
+          path: PromptGenerator.ipa
