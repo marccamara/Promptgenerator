@@ -30,10 +30,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Trouver l'app
+        run: |
+          echo "=== Recherche de l'app ==="
+          find build -name "*.app" -type d
+          
       - name: Création du package IPA
         run: |
+          APP_PATH=$(find build -name "PromptGenerator.app" -type d | head -n 1)
+          echo "App trouvée : $APP_PATH"
           mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/PromptGenerator.app Payload/
+          cp -r "$APP_PATH" Payload/
           zip -r PromptGenerator.ipa Payload
 
       - name: Publication de l'IPA en Artifact
