@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 // ============================================================
 // STRUCTURES DE DONNÉES
@@ -66,6 +67,26 @@ class FileManagerHelper {
         if let text = try? String(contentsOf: url, encoding: .utf16) { return text }
         if let text = try? String(contentsOf: url, encoding: .isoLatin1) { return text }
         return defaultContent
+    }
+
+    /// Copie les fichiers choisis dans Documents/ (écrase ceux du même nom).
+    /// Retourne le nombre de fichiers importés.
+    func importFiles(from urls: [URL]) -> Int {
+        ensureFolderExists()
+        var count = 0
+        for url in urls {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            let dest = dataFolderURL.appendingPathComponent(url.lastPathComponent)
+            do {
+                try data.write(to: dest, options: .atomic)
+                count += 1
+            } catch {
+                continue
+            }
+        }
+        return count
     }
 
     func fileURL(for name: String) -> URL {
@@ -307,6 +328,8 @@ struct ContentView: View {
     @State private var showCopiedAlert = false
     @State private var copiedIndex = 0
     @State private var loadedCounts: String = ""
+    @State private var showImporter = false
+    @State private var importMessage: String = ""
 
     let formats = ["9:16", "3:4", "1:1", "4:5", "16:9", "2:3"]
     let cadragesUI = ["Miroir", "CamAvant", "Distance", "BrasTendu", "Aléatoire"]
@@ -450,6 +473,26 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 20)
 
+                    Button(action: { showImporter = true }) {
+                        HStack {
+                            Image(systemName: "square.and.arrow.down")
+                            Text("📥 Importer des fichiers .txt")
+                        }
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(.purple)
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
+
+                    if !importMessage.isEmpty {
+                        Text(importMessage)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.green.opacity(0.8))
+                    }
+
                     Button(action: ouvrirDossier) {
                         HStack {
                             Image(systemName: "folder")
@@ -506,6 +549,20 @@ struct ContentView: View {
 
                     Spacer(minLength: 40)
                 }
+            }
+        }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.plainText, .text],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                let n = FileManagerHelper.shared.importFiles(from: urls)
+                importMessage = "✅ \(n) fichier(s) importé(s)"
+                chargerFichiers()
+            case .failure(let error):
+                importMessage = "❌ \(error.localizedDescription)"
             }
         }
         .alert(isPresented: $showCopiedAlert) {
