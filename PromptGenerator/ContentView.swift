@@ -440,6 +440,20 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 20)
 
+                    Button(action: ouvrirDossier) {
+                        HStack {
+                            Image(systemName: "folder")
+                            Text("📂 Ouvrir le dossier")
+                        }
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(.purple)
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
+
                     if !prompts.isEmpty {
                         ForEach(Array(prompts.enumerated()), id: \.offset) { index, prompt in
                             VStack(alignment: .leading, spacing: 8) {
@@ -536,6 +550,23 @@ struct ContentView: View {
         chargerFichiers()
     }
 
+    func ouvrirDossier() {
+        let fm = FileManagerHelper.shared
+        fm.ensureFolderExists()
+
+        // Créer les fichiers s'ils n'existent pas
+        _ = fm.loadFile(named: fm.posturesFile, defaultContent: DEFAULT_POSTURES)
+        _ = fm.loadFile(named: fm.expressionsFile, defaultContent: DEFAULT_EXPRESSIONS)
+        _ = fm.loadFile(named: fm.cadragesFile, defaultContent: DEFAULT_CADRAGES)
+        _ = fm.loadFile(named: fm.decorsFile, defaultContent: DEFAULT_DECORS)
+        _ = fm.loadFile(named: fm.tenuesFile, defaultContent: DEFAULT_TENUES)
+
+        // Ouvrir le dossier dans l'app Fichiers
+        let url = fm.dataFolderURL
+        let controller = UIDocumentInteractionController(url: url)
+        controller.presentOptionsMenu(from: CGRect.zero, in: nil, animated: true)
+    }
+
     // MARK: - Logique de cadrage
     func lettreCadrage(_ c: String) -> [String] {
         switch c {
@@ -564,7 +595,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Tirage sans répétition
     func tirerSansRepetition(_ liste: [String], n: Int) -> [String] {
         if liste.isEmpty { return [] }
         var pool = liste
@@ -589,7 +619,7 @@ struct ContentView: View {
             } else {
                 return [deux[0], deux[0], deux[0], deux[0]]
             }
-        default: // "Tous identiques"
+        default:
             let un = liste.randomElement() ?? liste[0]
             return [un, un, un, un]
         }
@@ -612,16 +642,13 @@ struct ContentView: View {
 
         let lettres = lettreCadrage(cadrage)
 
-        // 1. Choisir 4 catégories de postures (tirage sans remise parmi les cochées)
         var categoriesDisponibles: [String] = []
         for cat in posturesActives {
             if allPostures.contains(where: { $0.category == cat }) {
                 categoriesDisponibles.append(cat)
             }
         }
-        if categoriesDisponibles.isEmpty {
-            categoriesDisponibles = ["Debout"]
-        }
+        if categoriesDisponibles.isEmpty { categoriesDisponibles = ["Debout"] }
         var categoriesChoisies: [String] = []
         var poolCats = categoriesDisponibles
         for _ in 0..<4 {
@@ -630,7 +657,6 @@ struct ContentView: View {
             categoriesChoisies.append(poolCats.remove(at: idx))
         }
 
-        // 2. Pour chaque prompt, tirer posture / cadrage / expression
         var posturesFinales: [String] = []
         for (i, cat) in categoriesChoisies.enumerated() {
             let lettre = lettres[i % lettres.count]
@@ -639,76 +665,10 @@ struct ContentView: View {
             posturesFinales.append(choix)
         }
 
-        // Cadrages : 4 différents compatibles avec le cadrage
         var poolCadragesGlobal: [String] = []
         for (i, _) in (0..<4).enumerated() {
             let lettre = lettres[i % lettres.count]
             poolCadragesGlobal.append(contentsOf: filtrerParBalise(allCadrages, lettre: lettre))
         }
         poolCadragesGlobal = Array(Set(poolCadragesGlobal))
-        let cadragesFinaux = tirerSansRepetition(poolCadragesGlobal, n: 4)
-
-        // Expressions : 4 différentes
-        var poolExpressionsGlobal: [String] = []
-        for (i, _) in (0..<4).enumerated() {
-            let lettre = lettres[i % lettres.count]
-            poolExpressionsGlobal.append(contentsOf: filtrerParBalise(allExpressions, lettre: lettre))
-        }
-        poolExpressionsGlobal = Array(Set(poolExpressionsGlobal))
-        let expressionsFinales = tirerSansRepetition(poolExpressionsGlobal, n: 4)
-
-        // Décors : selon mode
-        var poolDecorsGlobal: [String] = []
-        for (i, _) in (0..<4).enumerated() {
-            let lettre = lettres[i % lettres.count]
-            poolDecorsGlobal.append(contentsOf: filtrerParBalise(allDecors, lettre: lettre))
-        }
-        poolDecorsGlobal = Array(Set(poolDecorsGlobal))
-        let decorsFinaux = repartir(poolDecorsGlobal, mode: modeDecors)
-
-        // Tenues : selon mode
-        var poolTenuesGlobal: [String] = []
-        for (i, _) in (0..<4).enumerated() {
-            let lettre = lettres[i % lettres.count]
-            poolTenuesGlobal.append(contentsOf: filtrerParBalise(allTenues, lettre: lettre))
-        }
-        poolTenuesGlobal = Array(Set(poolTenuesGlobal))
-        let tenuesFinales = repartir(poolTenuesGlobal, mode: modeTenues)
-
-        // 3. Construire les prompts
-        var resultats: [String] = []
-        for i in 0..<4 {
-            let posture = i < posturesFinales.count ? posturesFinales[i] : "standing naturally"
-            let cadr = i < cadragesFinaux.count ? cadragesFinaux[i] : ""
-            let expr = i < expressionsFinales.count ? expressionsFinales[i] : "with a calm expression"
-            let dec = i < decorsFinaux.count ? decorsFinaux[i] : "a cozy bedroom"
-            let ten = i < tenuesFinales.count ? tenuesFinales[i] : "a simple outfit"
-
-            let prompt = """
-            \(IDENTITY_LOCK)
-
-            PHOTO SPECIFICATIONS:
-            A highly detailed, high-resolution photo taken on an iPhone. Format: \(formatTexte(formatSortie)). Single image only.
-
-            \(COMPOSITION_RULE)
-
-            \(MAKEUP_RULE)
-
-            SCENE:
-            \(cadr),
-            featuring her \(expr), showing her \(posture),
-            wearing \(ten),
-            in \(dec).
-
-            \(PHOTO_STYLE)
-
-            FINAL REMINDER: The face must be an EXACT COPY of the reference image. Do not change any feature. Do not beautify. Do not invent a new face.
-            """
-
-            resultats.append(prompt)
-        }
-
-        prompts = resultats
-        promptCategories = categoriesChoisies
-    }
-}
+        let cadragesFinaux = tirerSansRepetition(poolCadragesGlobal, n: 
