@@ -17,6 +17,12 @@ struct TaggedEntry {
     let tags: Set<String>
 }
 
+struct DecorEntry {
+    let category: String
+    let text: String
+    let tags: Set<String>
+}
+
 struct TenueEntry {
     let text: String
     let style: String
@@ -213,16 +219,32 @@ selfie with phone raised above eye level at 50cm, 26mm lens, f/2.0, ISO 320, sof
 """
 
 let DEFAULT_DECORS = """
+# Format : [Catégorie] puis décor | balises (C/M/D/S ou ALL)
+
+[Chambre]
 a cozy bedroom with an unmade bed, warm ambient light, clothes on a chair | ALL
 a sunlit modern apartment bedroom with soft white linens and wooden furniture | ALL
-a bohemian style bedroom with macrame, plants, and fairy lights | ALL
 a minimalist bedroom with plain walls and a large floor mirror | ALL
+
+[Salon]
 a modern living room with a sofa, a plant, and framed art | ALL
-a cozy café terrace with a coffee cup on the table, natural daylight | C,S
-a city street with blurred passersby, daylight, candid moment | D
-a park bench surrounded by trees, golden hour lighting | D
-a bathroom with a large mirror, warm light, plants on shelves | M
 a cozy living room with a book on a coffee table and a warm lamp | ALL
+
+[Café / Resto]
+a cozy café terrace with a coffee cup on the table, natural daylight | ALL
+a small restaurant table by the window with soft daylight | ALL
+
+[Extérieur]
+a city street with blurred passersby, daylight, candid moment | ALL
+a park bench surrounded by trees, golden hour lighting | ALL
+
+[Soirée / Bar]
+a dimly lit bar with warm neon reflections and a wooden counter | ALL
+a rooftop terrace in the evening with string lights | ALL
+
+[Voyage / Hôtel]
+a bright hotel room with white linens and a large window | ALL
+a hotel bathroom with a large mirror, warm light, plants on shelves | ALL
 """
 
 let DEFAULT_TENUES = """
@@ -284,6 +306,32 @@ func parseTaggedEntries(_ content: String) -> [TaggedEntry] {
                 let tagsStr = parts[1].trimmingCharacters(in: .whitespaces).uppercased()
                 let tags = Set(tagsStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) })
                 result.append(TaggedEntry(text: text, tags: tags))
+            }
+        }
+    }
+    return result
+}
+
+func parseDecors(_ content: String) -> [DecorEntry] {
+    var result: [DecorEntry] = []
+    var currentCategory: String = "Autre"
+
+    for rawLine in content.components(separatedBy: .newlines) {
+        let line = rawLine.trimmingCharacters(in: .whitespaces)
+        if line.isEmpty || line.hasPrefix("#") { continue }
+
+        if line.hasPrefix("[") && line.hasSuffix("]") {
+            currentCategory = String(line.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+            continue
+        }
+
+        if line.contains("|") {
+            let parts = line.components(separatedBy: "|")
+            if parts.count >= 2 {
+                let text = parts[0].trimmingCharacters(in: .whitespaces)
+                let tagsStr = parts[1].trimmingCharacters(in: .whitespaces).uppercased()
+                let tags = Set(tagsStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+                result.append(DecorEntry(category: currentCategory, text: text, tags: tags))
             }
         }
     }
@@ -397,6 +445,8 @@ struct ContentView: View {
     @State private var styleTrescourt: Bool = true
 
     @State private var posturesActives: Set<String> = ["Debout", "Assise", "Allongée", "Mur", "Miroir Actif", "Selfie Bras Tendu"]
+    let categoriesDecors = ["Chambre", "Salon", "Café / Resto", "Extérieur", "Soirée / Bar", "Voyage / Hôtel"]
+    @State private var decorsActifs: Set<String> = ["Chambre", "Salon", "Café / Resto", "Extérieur", "Soirée / Bar", "Voyage / Hôtel"]
     @State private var prompts: [String] = []
     @State private var promptCategories: [String] = []
     @State private var showCopiedAlert = false
@@ -484,7 +534,30 @@ struct ContentView: View {
                         .tint(.purple)
                     }
 
-                    cardSection(title: "🏠 DÉCORS") {
+                    cardSection(title: "🏠 CATÉGORIES DÉCORS (cocher)") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(categoriesDecors, id: \.self) { cat in
+                                HStack {
+                                    Image(systemName: decorsActifs.contains(cat) ? "checkmark.square.fill" : "square")
+                                        .foregroundColor(decorsActifs.contains(cat) ? .purple : .gray)
+                                    Text(cat)
+                                        .font(.system(size: 14, design: .rounded))
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if decorsActifs.contains(cat) {
+                                        decorsActifs.remove(cat)
+                                    } else {
+                                        decorsActifs.insert(cat)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    cardSection(title: "🏠 RÉPARTITION DÉCORS") {
                         Picker("Décors", selection: $modeDecors) {
                             ForEach(modesRepartition, id: \.self) { Text($0).tag($0) }
                         }
@@ -669,7 +742,7 @@ struct ContentView: View {
         let p = parsePostures(posturesContent).count
         let e = parseTaggedEntries(expressionsContent).count
         let c = parseTaggedEntries(cadragesContent).count
-        let d = parseTaggedEntries(decorsContent).count
+        let d = parseDecors(decorsContent).count
         let t = parseTenues(tenuesContent).count
 
         loadedCounts = "📁 P:\(p) E:\(e) C:\(c) D:\(d) T:\(t)"
@@ -777,6 +850,50 @@ struct ContentView: View {
         }
     }
 
+    /// Tire les décors en respectant les catégories cochées.
+    /// - 4 différents : un décor par catégorie (catégories différentes si possible)
+    /// - 2 par 2 : 2 décors de catégories différentes, chacun utilisé 2 fois
+    /// - Tous identiques : 1 seul décor pour les 4 prompts
+    func choisirDecors(_ tous: [DecorEntry], lettres: [String], mode: String) -> [String] {
+        func compatible(_ d: DecorEntry) -> Bool {
+            d.tags.contains("ALL") || lettres.contains(where: { d.tags.contains($0) })
+        }
+
+        var candidats = tous.filter { decorsActifs.contains($0.category) && compatible($0) }
+        if candidats.isEmpty { candidats = tous.filter { compatible($0) } }   // repli
+        if candidats.isEmpty { return ["a cozy bedroom", "a cozy bedroom", "a cozy bedroom", "a cozy bedroom"] }
+
+        var parCategorie: [String: [String]] = [:]
+        for d in candidats { parCategorie[d.category, default: []].append(d.text) }
+        let cats = parCategorie.keys.shuffled()
+
+        // n décors, un par catégorie (en cycle si moins de catégories), sans doublon de texte
+        func tirer(_ n: Int) -> [String] {
+            var utilises: Set<String> = []
+            var resultat: [String] = []
+            for i in 0..<n {
+                let cat = cats[i % cats.count]
+                let pool = parCategorie[cat] ?? []
+                let libres = pool.filter { !utilises.contains($0) }
+                let choix = libres.randomElement() ?? pool.randomElement() ?? "a cozy bedroom"
+                utilises.insert(choix)
+                resultat.append(choix)
+            }
+            return resultat
+        }
+
+        switch mode {
+        case "4 différents":
+            return tirer(4)
+        case "2 par 2":
+            let deux = tirer(2)
+            return [deux[0], deux[0], deux[1], deux[1]]
+        default:
+            let un = tirer(1)[0]
+            return [un, un, un, un]
+        }
+    }
+
     func generer() {
         let fm = FileManagerHelper.shared
         let posturesContent = fm.loadFile(named: fm.posturesFile, defaultContent: DEFAULT_POSTURES)
@@ -788,7 +905,7 @@ struct ContentView: View {
         let allPostures = parsePostures(posturesContent)
         let allExpressions = parseTaggedEntries(expressionsContent)
         let allCadrages = parseTaggedEntries(cadragesContent)
-        let allDecors = parseTaggedEntries(decorsContent)
+        let allDecors = parseDecors(decorsContent)
         let allTenues = parseTenues(tenuesContent)
 
         var stylesChoisis: Set<String> = []
@@ -844,13 +961,7 @@ struct ContentView: View {
         poolExpressionsGlobal = Array(Set(poolExpressionsGlobal))
         let expressionsFinales = tirerSansRepetition(poolExpressionsGlobal, n: 4)
 
-        var poolDecorsGlobal: [String] = []
-        for (i, _) in (0..<4).enumerated() {
-            let lettre = lettres[i % lettres.count]
-            poolDecorsGlobal.append(contentsOf: filtrerParBalise(allDecors, lettre: lettre))
-        }
-        poolDecorsGlobal = Array(Set(poolDecorsGlobal))
-        let decorsFinaux = repartir(poolDecorsGlobal, mode: modeDecors)
+        let decorsFinaux = choisirDecors(allDecors, lettres: lettres, mode: modeDecors)
 
         var poolTenuesGlobal: [String] = []
         for (i, _) in (0..<4).enumerated() {
