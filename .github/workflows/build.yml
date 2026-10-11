@@ -39,6 +39,20 @@ jobs:
         run: |
           APP_PATH=$(find build -name "PromptGenerator.app" -type d | head -n 1)
           echo "App trouvée : $APP_PATH"
+
+          echo "=== Info.plist AVANT correction ==="
+          plutil -p "$APP_PATH/Info.plist"
+
+          # Force l'écriture des clés qui rendent le dossier visible dans l'app Fichiers
+          /usr/libexec/PlistBuddy -c "Delete :UIFileSharingEnabled" "$APP_PATH/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c "Delete :LSSupportsOpeningDocumentsInPlace" "$APP_PATH/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$APP_PATH/Info.plist"
+
+          echo "=== Info.plist APRES correction ==="
+          plutil -p "$APP_PATH/Info.plist"
+          plutil -p "$APP_PATH/Info.plist" | grep -E "UIFileSharingEnabled|LSSupportsOpeningDocumentsInPlace"
+
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r PromptGenerator.ipa Payload
