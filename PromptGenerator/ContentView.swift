@@ -39,8 +39,11 @@ class FileManagerHelper {
     private let bookmarkKey = "customFolderBookmark"
     private var scopedURL: URL? = nil   // dossier choisi, accès gardé ouvert
 
+    /// Équivalent de ~/Documents/photos_traitees en Python :
+    /// un sous-dossier créé explicitement dans Documents/
     var defaultFolderURL: URL {
-        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs.appendingPathComponent("PromptGenData", isDirectory: true)
     }
 
     /// Dossier utilisé : celui choisi par l'utilisateur, sinon Documents/ de l'app
@@ -51,7 +54,7 @@ class FileManagerHelper {
     var usingCustomFolder: Bool { scopedURL != nil }
 
     var folderDisplayName: String {
-        return scopedURL?.lastPathComponent ?? "Documents de l'app"
+        return dataFolderURL.lastPathComponent
     }
 
     /// À appeler au lancement : réactive l'accès au dossier choisi précédemment
@@ -353,6 +356,30 @@ The photo must look like a real unedited photo taken with an iPhone and pulled d
 """
 
 // ============================================================
+// SÉLECTEUR DE DOSSIER (UIKit, plus fiable que .fileImporter)
+// ============================================================
+
+class FolderPickerDelegate: NSObject, UIDocumentPickerDelegate {
+    static var current: FolderPickerDelegate?   // garde une référence forte
+    let onPick: (URL) -> Void
+
+    init(onPick: @escaping (URL) -> Void) {
+        self.onPick = onPick
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        if let url = urls.first {
+            DispatchQueue.main.async { self.onPick(url) }
+        }
+        FolderPickerDelegate.current = nil
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        FolderPickerDelegate.current = nil
+    }
+}
+
+// ============================================================
 // INTERFACE
 // ============================================================
 
@@ -375,7 +402,6 @@ struct ContentView: View {
     @State private var showCopiedAlert = false
     @State private var copiedIndex = 0
     @State private var loadedCounts: String = ""
-    @State private var showFolderPicker = false
     @State private var folderName: String = ""
 
     let formats = ["9:16", "3:4", "1:1", "4:5", "16:9", "2:3"]
@@ -520,22 +546,8 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 20)
 
-                    Button(action: { showFolderPicker = true }) {
-                        HStack {
-                            Image(systemName: "folder.badge.plus")
-                            Text("📁 Choisir le dossier des fichiers")
-                        }
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.08))
-                        .foregroundColor(.purple)
-                        .cornerRadius(12)
-                    }
-                    .padding(.horizontal, 20)
-
                     if !folderName.isEmpty {
-                        Text("Dossier actif : \(folderName)")
+                        Text("📁 Fichiers → Sur mon iPhone → \(folderName)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.green.opacity(0.8))
                     }
@@ -598,21 +610,6 @@ struct ContentView: View {
                 }
             }
         }
-        .fileImporter(
-            isPresented: $showFolderPicker,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                if FileManagerHelper.shared.setCustomFolder(url) {
-                    FileManagerHelper.shared.createDefaultFilesIfNeeded()
-                    folderName = FileManagerHelper.shared.folderDisplayName
-                    chargerFichiers()
-                } else {
-                    folderName = "❌ accès refusé"
-                }
-            }
-        }
         .alert(isPresented: $showCopiedAlert) {
             Alert(
                 title: Text("Copié ! 📋"),
@@ -621,7 +618,7 @@ struct ContentView: View {
             )
         }
         .onAppear {
-            FileManagerHelper.shared.restoreSavedFolder()
+            FileManagerHelper.shared.resetFolder()   // plus de sélecteur : dossier fixe
             FileManagerHelper.shared.createDefaultFilesIfNeeded()
             folderName = FileManagerHelper.shared.folderDisplayName
             chargerFichiers()
@@ -680,6 +677,29 @@ struct ContentView: View {
 
     func rechargerFichiers() {
         chargerFichiers()
+    }
+
+    func ouvrirSelecteurDossier() {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
+        picker.allowsMultipleSelection = false
+
+        let delegate = FolderPickerDelegate { url in
+            if FileManagerHelper.shared.setCustomFolder(url) {
+                FileManagerHelper.shared.createDefaultFilesIfNeeded()
+                folderName = FileManagerHelper.shared.folderDisplayName
+                chargerFichiers()
+            } else {
+                folderName = "❌ accès refusé"
+            }
+        }
+        FolderPickerDelegate.current = delegate
+        picker.delegate = delegate
+
+        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+        let window = scene?.windows.first(where: { $0.isKeyWindow }) ?? scene?.windows.first
+        var top = window?.rootViewController
+        while let presented = top?.presentedViewController { top = presented }
+        top?.present(picker, animated: true, completion: nil)
     }
 
     func ouvrirDossier() {
