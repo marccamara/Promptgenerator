@@ -528,7 +528,6 @@ struct ContentView: View {
         .padding(.horizontal, 20)
     }
 
-    // MARK: - Chargement des fichiers
     func chargerFichiers() {
         let fm = FileManagerHelper.shared
         let posturesContent = fm.loadFile(named: fm.posturesFile, defaultContent: DEFAULT_POSTURES)
@@ -554,20 +553,17 @@ struct ContentView: View {
         let fm = FileManagerHelper.shared
         fm.ensureFolderExists()
 
-        // Créer les fichiers s'ils n'existent pas
         _ = fm.loadFile(named: fm.posturesFile, defaultContent: DEFAULT_POSTURES)
         _ = fm.loadFile(named: fm.expressionsFile, defaultContent: DEFAULT_EXPRESSIONS)
         _ = fm.loadFile(named: fm.cadragesFile, defaultContent: DEFAULT_CADRAGES)
         _ = fm.loadFile(named: fm.decorsFile, defaultContent: DEFAULT_DECORS)
         _ = fm.loadFile(named: fm.tenuesFile, defaultContent: DEFAULT_TENUES)
 
-        // Ouvrir le dossier dans l'app Fichiers
         let url = fm.dataFolderURL
         let controller = UIDocumentInteractionController(url: url)
         controller.presentOptionsMenu(from: CGRect.zero, in: nil, animated: true)
     }
 
-    // MARK: - Logique de cadrage
     func lettreCadrage(_ c: String) -> [String] {
         switch c {
         case "Miroir": return ["M"]
@@ -625,7 +621,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Génération
     func generer() {
         let fm = FileManagerHelper.shared
         let posturesContent = fm.loadFile(named: fm.posturesFile, defaultContent: DEFAULT_POSTURES)
@@ -671,4 +666,65 @@ struct ContentView: View {
             poolCadragesGlobal.append(contentsOf: filtrerParBalise(allCadrages, lettre: lettre))
         }
         poolCadragesGlobal = Array(Set(poolCadragesGlobal))
-        let cadragesFinaux = tirerSansRepetition(poolCadragesGlobal, n: 
+        let cadragesFinaux = tirerSansRepetition(poolCadragesGlobal, n: 4)
+
+        var poolExpressionsGlobal: [String] = []
+        for (i, _) in (0..<4).enumerated() {
+            let lettre = lettres[i % lettres.count]
+            poolExpressionsGlobal.append(contentsOf: filtrerParBalise(allExpressions, lettre: lettre))
+        }
+        poolExpressionsGlobal = Array(Set(poolExpressionsGlobal))
+        let expressionsFinales = tirerSansRepetition(poolExpressionsGlobal, n: 4)
+
+        var poolDecorsGlobal: [String] = []
+        for (i, _) in (0..<4).enumerated() {
+            let lettre = lettres[i % lettres.count]
+            poolDecorsGlobal.append(contentsOf: filtrerParBalise(allDecors, lettre: lettre))
+        }
+        poolDecorsGlobal = Array(Set(poolDecorsGlobal))
+        let decorsFinaux = repartir(poolDecorsGlobal, mode: modeDecors)
+
+        var poolTenuesGlobal: [String] = []
+        for (i, _) in (0..<4).enumerated() {
+            let lettre = lettres[i % lettres.count]
+            poolTenuesGlobal.append(contentsOf: filtrerParBalise(allTenues, lettre: lettre))
+        }
+        poolTenuesGlobal = Array(Set(poolTenuesGlobal))
+        let tenuesFinales = repartir(poolTenuesGlobal, mode: modeTenues)
+
+        var resultats: [String] = []
+        for i in 0..<4 {
+            let posture = i < posturesFinales.count ? posturesFinales[i] : "standing naturally"
+            let cadr = i < cadragesFinaux.count ? cadragesFinaux[i] : ""
+            let expr = i < expressionsFinales.count ? expressionsFinales[i] : "with a calm expression"
+            let dec = i < decorsFinaux.count ? decorsFinaux[i] : "a cozy bedroom"
+            let ten = i < tenuesFinales.count ? tenuesFinales[i] : "a simple outfit"
+
+            let prompt = """
+            \(IDENTITY_LOCK)
+
+            PHOTO SPECIFICATIONS:
+            A highly detailed, high-resolution photo taken on an iPhone. Format: \(formatTexte(formatSortie)). Single image only.
+
+            \(COMPOSITION_RULE)
+
+            \(MAKEUP_RULE)
+
+            SCENE:
+            \(cadr),
+            featuring her \(expr), showing her \(posture),
+            wearing \(ten),
+            in \(dec).
+
+            \(PHOTO_STYLE)
+
+            FINAL REMINDER: The face must be an EXACT COPY of the reference image. Do not change any feature. Do not beautify. Do not invent a new face.
+            """
+
+            resultats.append(prompt)
+        }
+
+        prompts = resultats
+        promptCategories = categoriesChoisies
+    }
+}
