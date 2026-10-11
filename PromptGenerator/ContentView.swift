@@ -41,7 +41,18 @@ class FileManagerHelper {
     }
 
     func ensureFolderExists() {
-        // Documents/ existe toujours, rien à faire
+        try? FileManager.default.createDirectory(at: dataFolderURL, withIntermediateDirectories: true)
+    }
+
+    /// Crée les 5 fichiers .txt dans Documents/ s'ils n'existent pas encore,
+    /// pour que le dossier soit visible (non vide) dans l'app Fichiers.
+    func createDefaultFilesIfNeeded() {
+        ensureFolderExists()
+        _ = loadFile(named: posturesFile, defaultContent: DEFAULT_POSTURES)
+        _ = loadFile(named: expressionsFile, defaultContent: DEFAULT_EXPRESSIONS)
+        _ = loadFile(named: cadragesFile, defaultContent: DEFAULT_CADRAGES)
+        _ = loadFile(named: decorsFile, defaultContent: DEFAULT_DECORS)
+        _ = loadFile(named: tenuesFile, defaultContent: DEFAULT_TENUES)
     }
 
     func loadFile(named name: String, defaultContent: String) -> String {
@@ -50,7 +61,11 @@ class FileManagerHelper {
             try? defaultContent.write(to: url, atomically: true, encoding: .utf8)
             return defaultContent
         }
-        return (try? String(contentsOf: url, encoding: .utf8)) ?? defaultContent
+        // Lecture UTF-8, avec repli si le fichier a été réenregistré dans un autre encodage
+        if let text = try? String(contentsOf: url, encoding: .utf8) { return text }
+        if let text = try? String(contentsOf: url, encoding: .utf16) { return text }
+        if let text = try? String(contentsOf: url, encoding: .isoLatin1) { return text }
+        return defaultContent
     }
 
     func fileURL(for name: String) -> URL {
@@ -501,6 +516,7 @@ struct ContentView: View {
             )
         }
         .onAppear {
+            FileManagerHelper.shared.createDefaultFilesIfNeeded()
             chargerFichiers()
         }
     }
@@ -561,20 +577,12 @@ struct ContentView: View {
 
     func ouvrirDossier() {
         let fm = FileManagerHelper.shared
+        fm.createDefaultFilesIfNeeded()
 
-        _ = fm.loadFile(named: fm.posturesFile, defaultContent: DEFAULT_POSTURES)
-        _ = fm.loadFile(named: fm.expressionsFile, defaultContent: DEFAULT_EXPRESSIONS)
-        _ = fm.loadFile(named: fm.cadragesFile, defaultContent: DEFAULT_CADRAGES)
-        _ = fm.loadFile(named: fm.decorsFile, defaultContent: DEFAULT_DECORS)
-        _ = fm.loadFile(named: fm.tenuesFile, defaultContent: DEFAULT_TENUES)
-
-        let url = fm.dataFolderURL
-        let sharedURL = url as NSURL
-        let activityVC = UIActivityViewController(activityItems: [sharedURL], applicationActivities: nil)
-
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
-            rootVC.present(activityVC, animated: true, completion: nil)
+        // Ouvre l'app Fichiers directement dans le dossier Documents de l'app
+        let path = fm.dataFolderURL.path
+        if let url = URL(string: "shareddocuments://" + path) {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
     }
 
