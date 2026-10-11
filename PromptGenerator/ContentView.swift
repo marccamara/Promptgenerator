@@ -29,26 +29,22 @@ struct TenueEntry {
 class FileManagerHelper {
     static let shared = FileManagerHelper()
 
-    let dataFolderName = "PromptGenData"
     let posturesFile = "postures.txt"
     let expressionsFile = "expressions.txt"
     let cadragesFile = "cadrages.txt"
     let decorsFile = "decors.txt"
     let tenuesFile = "tenues.txt"
 
+    // ✅ Utilise Documents/ directement (pas de sous-dossier)
     var dataFolderURL: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return docs.appendingPathComponent(dataFolderName)
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
     func ensureFolderExists() {
-        if !FileManager.default.fileExists(atPath: dataFolderURL.path) {
-            try? FileManager.default.createDirectory(at: dataFolderURL, withIntermediateDirectories: true)
-        }
+        // Documents/ existe toujours, rien à faire
     }
 
     func loadFile(named name: String, defaultContent: String) -> String {
-        ensureFolderExists()
         let url = dataFolderURL.appendingPathComponent(name)
         if !FileManager.default.fileExists(atPath: url.path) {
             try? defaultContent.write(to: url, atomically: true, encoding: .utf8)
@@ -63,53 +59,103 @@ class FileManagerHelper {
 }
 
 // ============================================================
-// CONTENU PAR DÉFAUT (si fichier absent)
+// CONTENU PAR DÉFAUT
 // ============================================================
 
 let DEFAULT_POSTURES = """
+# Format : [Catégorie] puis postures avec balises C/M/D/S
+
 [Debout]
 standing naturally with weight shifted to one hip, one hand in pocket | C,M,D,S
 standing by a window looking outside, arms loosely crossed | C,M,D
+standing with one hand on hip and the other touching hair | C,M,S
+standing straight with both arms at sides, shoulders relaxed | C,M,D
 
 [Assise]
 sitting on the edge of a bed with legs crossed, hands on knees | C,D
 sitting cross-legged on a couch, hands resting on thighs | C,D
+sitting on a chair leaning back slightly, one arm on the backrest | C,D
+sitting on a stool with legs crossed at ankles, hands on lap | C,D
 
 [Allongée]
 lying flat on a bed on her back, arms relaxed at sides | C,D
+lying on her side with one arm under her head, knees slightly bent | C,D
+lying on her stomach propped up on elbows, looking forward | C,D
+lying diagonally across a bed with arms stretched above head | C,D
 
 [Mur]
 leaning against a wall with one shoulder, hands in pockets | C,M,D
+leaning against a wall with one foot flat on it behind her | C,M,D
+back flat against a wall, arms crossed, looking straight ahead | C,M,D
+leaning against a doorway frame, one hand on the frame | C,M,D
 
 [Miroir Actif]
 taking a quick mirror selfie holding phone at chest height | M
+full-length mirror selfie showing the whole outfit | M
+half-body mirror selfie with one hand on hip, phone in the other | M
+side mirror selfie, head turned slightly, phone raised to eye level | M
 
 [Selfie Bras Tendu]
 holding phone at arm's length with one arm extended, front camera | S
+taking a quick selfie with the phone raised at eye level | S
+selfie with the phone held slightly above eye level | S
+selfie with the phone held at chest level, looking down slightly | S
 """
 
 let DEFAULT_EXPRESSIONS = """
 looking directly at the lens with a calm and collected demeanor | ALL
 looking sideways with a subtle moody aesthetic | ALL
+gazing softly into the distance with a dreamy expression | ALL
+looking at the camera with a natural slight smile | C,S
+looking at the mirror reflection with a playful expression | M
+caught in a candid moment, looking away from the camera | D
+expressing quiet confidence with a relaxed gaze | ALL
+giving a soft half-smile with a hint of shyness | M,C,S
+with a neutral calm expression, lips slightly parted | ALL
+with a warm friendly expression, eyes slightly narrowed | M,C,S
 """
 
 let DEFAULT_CADRAGES = """
-front camera selfie at 30cm from face, 24mm equivalent lens, f/2.2, ISO 400 | C
-mirror selfie at 50cm from the mirror, 26mm lens, f/2.2, ISO 400 | M
+front camera selfie at 30cm from face, 24mm equivalent lens, f/2.2, ISO 400, natural indoor window light coming from the left, soft diffused shadows | C
+front camera selfie at 40cm from face, 26mm lens, f/2.0, ISO 320, soft daylight from a window behind the camera, even lighting | C
+mirror selfie at 50cm from the mirror, 26mm lens, f/2.2, ISO 400, natural daylight from a window on the left, soft shadows | M
+mirror selfie at 1 meter from mirror, 24mm lens, f/2.0, ISO 500, warm ambient bedroom light, soft diffused shadows | M
+rear camera photo at 6 meters from subject, 100mm telephoto equivalent lens, f/2.8, ISO 200, natural daylight from a large window | D
+rear camera photo at 4 meters from subject, 50mm lens, f/2.0, ISO 320, soft afternoon daylight, even lighting | D
+selfie with arm fully extended at 60cm from face, 24mm lens, f/2.2, ISO 400, natural daylight from window | S
+selfie with phone raised above eye level at 50cm, 26mm lens, f/2.0, ISO 320, soft indoor lighting | S
 """
 
 let DEFAULT_DECORS = """
-a cozy bedroom with an unmade bed, warm ambient light | ALL
-a sunlit modern apartment bedroom with soft white linens | ALL
+a cozy bedroom with an unmade bed, warm ambient light, clothes on a chair | ALL
+a sunlit modern apartment bedroom with soft white linens and wooden furniture | ALL
+a bohemian style bedroom with macrame, plants, and fairy lights | ALL
+a minimalist bedroom with plain walls and a large floor mirror | ALL
+a modern living room with a sofa, a plant, and framed art | ALL
+a cozy café terrace with a coffee cup on the table, natural daylight | C,S
+a city street with blurred passersby, daylight, candid moment | D
+a park bench surrounded by trees, golden hour lighting | D
+a bathroom with a large mirror, warm light, plants on shelves | M
+a cozy living room with a book on a coffee table and a warm lamp | ALL
 """
 
 let DEFAULT_TENUES = """
 a soft white cotton t-shirt with a slightly loose fit | SIMPLE | ALL
+a plain black cotton t-shirt with a relaxed fit | SIMPLE | ALL
 a black satin slip dress with thin straps | SEXY | M,D
+a deep red velvet camisole top with lace trim | SEXY | M,D
+a beige oversized wool blazer over a white silk camisole | CHIC | M,D
+a black tailored midi dress with a square neckline | CHIC | M,D
+a black oversized hoodie with a small chest logo | STREETWEAR | C,S
+a white oversized graphic t-shirt with a large back print | STREETWEAR | C,S
+a two-piece bikini set in a soft pastel blue | PLAGE | ALL
+a white crochet mini dress worn over a bikini | PLAGE | ALL
+a black micro mini dress with thin straps | TRESCOURT | M,D
+a white bodycon mini dress with a square neckline | TRESCOURT | M,D
 """
 
 // ============================================================
-// PARSEURS DE FICHIERS
+// PARSEURS
 // ============================================================
 
 func parsePostures(_ content: String) -> [PostureEntry] {
@@ -233,7 +279,6 @@ struct ContentView: View {
     @State private var modeDecors: String = "4 différents"
     @State private var modeTenues: String = "4 différents"
 
-    // Styles de tenue (cases à cocher)
     @State private var styleSimple: Bool = true
     @State private var styleSexy: Bool = true
     @State private var styleChic: Bool = true
@@ -516,7 +561,6 @@ struct ContentView: View {
 
     func ouvrirDossier() {
         let fm = FileManagerHelper.shared
-        fm.ensureFolderExists()
 
         _ = fm.loadFile(named: fm.posturesFile, defaultContent: DEFAULT_POSTURES)
         _ = fm.loadFile(named: fm.expressionsFile, defaultContent: DEFAULT_EXPRESSIONS)
@@ -612,7 +656,6 @@ struct ContentView: View {
         let allDecors = parseTaggedEntries(decorsContent)
         let allTenues = parseTenues(tenuesContent)
 
-        // Construire le set des styles cochés
         var stylesChoisis: Set<String> = []
         if styleSimple { stylesChoisis.insert("SIMPLE") }
         if styleSexy { stylesChoisis.insert("SEXY") }
@@ -674,7 +717,6 @@ struct ContentView: View {
         poolDecorsGlobal = Array(Set(poolDecorsGlobal))
         let decorsFinaux = repartir(poolDecorsGlobal, mode: modeDecors)
 
-        // TENUES : filtrer par style ET par cadrage
         var poolTenuesGlobal: [String] = []
         for (i, _) in (0..<4).enumerated() {
             let lettre = lettres[i % lettres.count]
