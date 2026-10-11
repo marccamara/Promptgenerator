@@ -553,15 +553,22 @@ struct ContentView: View {
         let fm = FileManagerHelper.shared
         fm.ensureFolderExists()
 
+        // Créer les fichiers s'ils n'existent pas
         _ = fm.loadFile(named: fm.posturesFile, defaultContent: DEFAULT_POSTURES)
         _ = fm.loadFile(named: fm.expressionsFile, defaultContent: DEFAULT_EXPRESSIONS)
         _ = fm.loadFile(named: fm.cadragesFile, defaultContent: DEFAULT_CADRAGES)
         _ = fm.loadFile(named: fm.decorsFile, defaultContent: DEFAULT_DECORS)
         _ = fm.loadFile(named: fm.tenuesFile, defaultContent: DEFAULT_TENUES)
 
+        // Ouvrir le dossier dans l'app Fichiers
         let url = fm.dataFolderURL
-        let controller = UIDocumentInteractionController(url: url)
-        controller.presentOptionsMenu(from: CGRect.zero, in: nil, animated: true)
+        let sharedURL = url as NSURL
+        let activityVC = UIActivityViewController(activityItems: [sharedURL], applicationActivities: nil)
+
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootVC = windowScene.windows.first?.rootViewController {
+            rootVC.present(activityVC, animated: true, completion: nil)
+        }
     }
 
     func lettreCadrage(_ c: String) -> [String] {
