@@ -36,17 +36,67 @@ class FileManagerHelper {
     let decorsFile = "decors.txt"
     let tenuesFile = "tenues.txt"
 
-    // ✅ Utilise Documents/ directement (pas de sous-dossier)
-    var dataFolderURL: URL {
+    private let bookmarkKey = "customFolderBookmark"
+    private var scopedURL: URL? = nil   // dossier choisi, accès gardé ouvert
+
+    var defaultFolderURL: URL {
         return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    /// Dossier utilisé : celui choisi par l'utilisateur, sinon Documents/ de l'app
+    var dataFolderURL: URL {
+        return scopedURL ?? defaultFolderURL
+    }
+
+    var usingCustomFolder: Bool { scopedURL != nil }
+
+    var folderDisplayName: String {
+        return scopedURL?.lastPathComponent ?? "Documents de l'app"
+    }
+
+    /// À appeler au lancement : réactive l'accès au dossier choisi précédemment
+    func restoreSavedFolder() {
+        guard scopedURL == nil,
+              let data = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else {
+            UserDefaults.standard.removeObject(forKey: bookmarkKey)
+            return
+        }
+        if url.startAccessingSecurityScopedResource() {
+            scopedURL = url
+            if stale { saveBookmark(for: url) }
+        }
+    }
+
+    private func saveBookmark(for url: URL) {
+        if let data = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
+            UserDefaults.standard.set(data, forKey: bookmarkKey)
+        }
+    }
+
+    /// Mémorise le dossier choisi dans le sélecteur
+    func setCustomFolder(_ url: URL) -> Bool {
+        if let old = scopedURL { old.stopAccessingSecurityScopedResource() }
+        scopedURL = nil
+        guard url.startAccessingSecurityScopedResource() else { return false }
+        scopedURL = url
+        saveBookmark(for: url)
+        return true
+    }
+
+    /// Revient au dossier Documents de l'app
+    func resetFolder() {
+        if let old = scopedURL { old.stopAccessingSecurityScopedResource() }
+        scopedURL = nil
+        UserDefaults.standard.removeObject(forKey: bookmarkKey)
     }
 
     func ensureFolderExists() {
         try? FileManager.default.createDirectory(at: dataFolderURL, withIntermediateDirectories: true)
     }
 
-    /// Crée les 5 fichiers .txt dans Documents/ s'ils n'existent pas encore,
-    /// pour que le dossier soit visible (non vide) dans l'app Fichiers.
+    /// Crée les fichiers manquants dans le dossier actif (sans jamais écraser)
     func createDefaultFilesIfNeeded() {
         ensureFolderExists()
         _ = loadFile(named: posturesFile, defaultContent: DEFAULT_POSTURES)
@@ -56,37 +106,34 @@ class FileManagerHelper {
         _ = loadFile(named: tenuesFile, defaultContent: DEFAULT_TENUES)
     }
 
-    func loadFile(named name: String, defaultContent: String) -> String {
-        let url = dataFolderURL.appendingPathComponent(name)
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try? defaultContent.write(to: url, atomically: true, encoding: .utf8)
-            return defaultContent
+    /// Lecture coordonnée (nécessaire pour iCloud Drive et dossiers externes)
+    private func coordinatedRead(_ url: URL) -> Data? {
+        var result: Data? = nil
+        var coordError: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: [], error: &coordError) { readURL in
+            result = try? Data(contentsOf: readURL)
         }
-        // Lecture UTF-8, avec repli si le fichier a été réenregistré dans un autre encodage
-        if let text = try? String(contentsOf: url, encoding: .utf8) { return text }
-        if let text = try? String(contentsOf: url, encoding: .utf16) { return text }
-        if let text = try? String(contentsOf: url, encoding: .isoLatin1) { return text }
-        return defaultContent
+        return result
     }
 
-    /// Copie les fichiers choisis dans Documents/ (écrase ceux du même nom).
-    /// Retourne le nombre de fichiers importés.
-    func importFiles(from urls: [URL]) -> Int {
-        ensureFolderExists()
-        var count = 0
-        for url in urls {
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url) else { continue }
-            let dest = dataFolderURL.appendingPathComponent(url.lastPathComponent)
-            do {
-                try data.write(to: dest, options: .atomic)
-                count += 1
-            } catch {
-                continue
-            }
+    func loadFile(named name: String, defaultContent: String) -> String {
+        let url = dataFolderURL.appendingPathComponent(name)
+
+        // Fichier iCloud pas encore téléchargé : on demande le téléchargement
+        try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+
+        if let data = coordinatedRead(url) {
+            if let text = String(data: data, encoding: .utf8) { return text }
+            if let text = String(data: data, encoding: .utf16) { return text }
+            if let text = String(data: data, encoding: .isoLatin1) { return text }
+            return defaultContent
         }
-        return count
+
+        // Fichier absent : on le crée avec le contenu par défaut
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? defaultContent.write(to: url, atomically: true, encoding: .utf8)
+        }
+        return defaultContent
     }
 
     func fileURL(for name: String) -> URL {
@@ -328,8 +375,8 @@ struct ContentView: View {
     @State private var showCopiedAlert = false
     @State private var copiedIndex = 0
     @State private var loadedCounts: String = ""
-    @State private var showImporter = false
-    @State private var importMessage: String = ""
+    @State private var showFolderPicker = false
+    @State private var folderName: String = ""
 
     let formats = ["9:16", "3:4", "1:1", "4:5", "16:9", "2:3"]
     let cadragesUI = ["Miroir", "CamAvant", "Distance", "BrasTendu", "Aléatoire"]
@@ -473,10 +520,10 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 20)
 
-                    Button(action: { showImporter = true }) {
+                    Button(action: { showFolderPicker = true }) {
                         HStack {
-                            Image(systemName: "square.and.arrow.down")
-                            Text("📥 Importer des fichiers .txt")
+                            Image(systemName: "folder.badge.plus")
+                            Text("📁 Choisir le dossier des fichiers")
                         }
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .frame(maxWidth: .infinity)
@@ -487,8 +534,8 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 20)
 
-                    if !importMessage.isEmpty {
-                        Text(importMessage)
+                    if !folderName.isEmpty {
+                        Text("Dossier actif : \(folderName)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.green.opacity(0.8))
                     }
@@ -552,17 +599,18 @@ struct ContentView: View {
             }
         }
         .fileImporter(
-            isPresented: $showImporter,
-            allowedContentTypes: [.plainText, .text],
-            allowsMultipleSelection: true
+            isPresented: $showFolderPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
         ) { result in
-            switch result {
-            case .success(let urls):
-                let n = FileManagerHelper.shared.importFiles(from: urls)
-                importMessage = "✅ \(n) fichier(s) importé(s)"
-                chargerFichiers()
-            case .failure(let error):
-                importMessage = "❌ \(error.localizedDescription)"
+            if case .success(let urls) = result, let url = urls.first {
+                if FileManagerHelper.shared.setCustomFolder(url) {
+                    FileManagerHelper.shared.createDefaultFilesIfNeeded()
+                    folderName = FileManagerHelper.shared.folderDisplayName
+                    chargerFichiers()
+                } else {
+                    folderName = "❌ accès refusé"
+                }
             }
         }
         .alert(isPresented: $showCopiedAlert) {
@@ -573,7 +621,9 @@ struct ContentView: View {
             )
         }
         .onAppear {
+            FileManagerHelper.shared.restoreSavedFolder()
             FileManagerHelper.shared.createDefaultFilesIfNeeded()
+            folderName = FileManagerHelper.shared.folderDisplayName
             chargerFichiers()
         }
     }
